@@ -1,9 +1,8 @@
 setwd("~/TWAS_testing/Rcode/power/")
 library(plink2R)
 library(data.table)
-source("./allele_qc.R")
 source("./stage2.R")
-source("./multivariate/X1_nearest_gene/stage1.R")
+source("./stage1.R")
 
 chr = 1
 
@@ -18,29 +17,6 @@ IGAP_summary = IGAP_summary[R2_filter,]
 IGAP_summary = cbind(chr,IGAP_summary[,c(2,1,3,4,5)],1,1)
 colnames(IGAP_summary) = c("Chromosome","Position","MarkerName","Effect_allele",    
                              "Non_Effect_allele","Beta","SE","Pvalue"  )
-### Jansen GWAS
-JansenGWAS = fread(paste0("~/TWAS_testing/data/22traits/Jansen/Jansen_chr",
-                              chr,".txt"), header = T, data.table = F)
-cat(dim(JansenGWAS))
-JansenGWAS = JansenGWAS[JansenGWAS$Nsum > 300000,]
-cat(dim(JansenGWAS))
-
-### Merge Two GWAS
-JansenCor = JansenGWAS$Z / sqrt(JansenGWAS$Nsum-2+(JansenGWAS$Z)^2)
-# JansenCor = JansenGWAS$BETA / sqrt((JansenGWAS$Nsum-2)*JansenGWAS$SE^2 + (JansenGWAS$BETA)^2)
-JansenGWAS = cbind(JansenGWAS[,2:5],JansenCor)
-colnames(JansenGWAS)[1:2] = c("Chromosome","Position")
-IGAP_summary = merge(IGAP_summary,JansenGWAS,by = c("Chromosome","Position"))
-IGAP_summary$Effect_allele = as.character(IGAP_summary$Effect_allele)
-IGAP_summary$Non_Effect_allele = as.character(IGAP_summary$Non_Effect_allele)
-IGAP_summary$A1 = as.character(IGAP_summary$A1)
-IGAP_summary$A2 = as.character(IGAP_summary$A2)
-TwoGWASqc = allele.qc(IGAP_summary$Effect_allele,IGAP_summary$Non_Effect_allele,
-                      IGAP_summary$A1,IGAP_summary$A2)
-IGAP_summary$JansenCor[which(TwoGWASqc$flip)] = 
-  -IGAP_summary$JansenCor[which(TwoGWASqc$flip)]
-IGAP_summary = IGAP_summary[TwoGWASqc$keep,]
-IGAP_summary = IGAP_summary[,-c(9:10)]
 
 ### Gene Expression
 gene_exp = fread("~/TWAS_testing/data/gene_exp_Feb4.txt",header = T,data.table = F)
@@ -95,20 +71,14 @@ for(gene_ind in 1:nrow(gene_exp))
   IGAP_r = snp_bim_igap$Beta / sqrt(54162-2+snp_bim_igap$Beta^2)
   IGAP_r = as.data.frame(cbind(IGAP_r = IGAP_r, Position = snp_bim_igap$Position))
   #IGAP_r = snp_bim_igap$Beta / sqrt((54162-2)*snp_bim_igap$SE^2+snp_bim_igap$Beta^2)
-  Jansen_r = snp_bim_igap$JansenCor
-  Jansen_r = as.data.frame(cbind(Jansen_r = Jansen_r, Position = snp_bim_igap$Position))
   
   IGAP_r_nearest = snp_bim_igap_nearest$Beta / sqrt(54162-2+snp_bim_igap_nearest$Beta^2)
   IGAP_r_nearest = as.data.frame(cbind(IGAP_r = IGAP_r_nearest, 
                                        Position = snp_bim_igap_nearest$Position))
-  Jansen_r_nearest = snp_bim_igap_nearest$JansenCor
-  Jansen_r_nearest = as.data.frame(cbind(Jansen_r = Jansen_r_nearest,
-                                         Position = snp_bim_igap_nearest$Position))
-  
   # remove NA effects
-  rmNA_X1 = remove_na_effects(X1, SNP_BED, IGAP_r, Jansen_r)
+  rmNA_X1 = remove_na_effects(X1, SNP_BED, IGAP_r)
   rmNA_X1_nearest = remove_na_effects(X1_nearest, SNP_BED_nearest, 
-                                      IGAP_r_nearest, Jansen_r_nearest)
+                                      IGAP_r_nearest)
   
   # backward selection
   stage1X1 = fit_stage1(X1, rmNA_X1$SNP_BED)
@@ -133,17 +103,14 @@ for(gene_ind in 1:nrow(gene_exp))
     SNP_BED_combined = SNP_BED_combined[,-idx_dup]
     
     IGAP_r_combined = rbind(rmNA_X1$IGAP_r, rmNA_X1_nearest$IGAP_r)[-idx_dup,]
-    Jansen_r_combined = rbind(rmNA_X1$Jansen_r, rmNA_X1_nearest$Jansen_r)[-idx_dup,]
     temp = as.numeric(colnames(SNP_BED_combined))
   } else{
     IGAP_r_combined = rbind(rmNA_X1$IGAP_r, rmNA_X1_nearest$IGAP_r)
-    Jansen_r_combined = rbind(rmNA_X1$Jansen_r, rmNA_X1_nearest$Jansen_r)
     temp = as.numeric(colnames(SNP_BED_combined))
   }
  
   # check all SNPs are aligned
   print(paste0("IGAP_r & SNPs aligned? ", all(IGAP_r_combined$Position==temp)))
-  print(paste0("Jansen_r & SNPs aligned? ", all(Jansen_r_combined$Position==temp)))
   
   # align beta with snps
   hatbetaX1 = c(stage1X1$hatbetaX1, 
@@ -177,35 +144,6 @@ for(gene_ind in 1:nrow(gene_exp))
            corY = t(t(IGAP_r_combined$IGAP_r)),
            n = 54162)
   
-  ### Jansen
-  'stage2X1_Jansen = 
-    stage2(betahat = hatbetaX1,
-           G = SNP_BED,
-           corY = t(t(Jansen_r)),
-           n = 455258)
-  
-  stage2X2_Jansen = 
-    stage2(betahat = hatbetaX2,
-           G = SNP_BED,
-           corY = t(t(Jansen_r)),
-           n = 455258)
-           
-  stage2both_Jansen = 
-    stage2(betahat = cbind(hatbetaX1,hatbetaX2),
-           G = SNP_BED,
-           corY = t(t(Jansen_r)),
-           n = 455258)
-  
-  FINAL_RESULT = list(stage2X1 = stage2X1,
-                      stage2X2 = stage2X2,
-                      stage2both = stage2both,
-                      stage2X1_Jansen = stage2X1_Jansen,
-                      stage2X2_Jansen = stage2X2_Jansen,
-                      stage2both_Jansen = stage2both_Jansen,
-                      fX1 = lm_stage1_X1$fstatistic,
-                      fX2 = lm_stage1_X2$fstatistic
-  )'
-  
   FINAL_RESULT = list(stage2X1 = stage2X1,
                       stage2X1_nearest = stage2X1_nearest,
                       stage2both = stage2both,
@@ -220,5 +158,5 @@ for(gene_ind in 1:nrow(gene_exp))
   
 }
 save(real_data_result,
-     file = paste("~/TWAS_testing/results/power/multivariate/X1_nearest_gene/TWAS_X1_chr",
+     file = paste("~/TWAS_testing/results/power/multivariate/IGAP_only_nearest/TWAS_X1_chr",
                   chr,".Rdata",sep=""))

@@ -19,11 +19,11 @@ get_snp <- function(gene_exp, gene_ind, chr, IGAP_summary, Index_Mat){
                          " --chr ",chr," --from-kb ",
                          start," --to-kb ",end,
                          " --geno 0 --maf 0.05 --hwe 0.001  ",
-                         " --make-bed --out ~/TWAS_testing/data/For_Individual_Genes/",
+                         " --make-bed --out ~/TWAS_testing/data/For_Individual_Genes2/",
                          gene_name)
   system(plink_command)
   
-  snp = tryCatch(read_plink(paste("~/TWAS_testing/data/For_Individual_Genes/",gene_name,sep="")),
+  snp = tryCatch(read_plink(paste("~/TWAS_testing/data/For_Individual_Genes2/",gene_name,sep="")),
                  error=function(e){cat("ERROR :",
                                        conditionMessage(e),
                                        "\n")})
@@ -32,7 +32,7 @@ get_snp <- function(gene_exp, gene_ind, chr, IGAP_summary, Index_Mat){
     return(NULL)
   }
   
-  remove_command = paste("rm ~/TWAS_testing/data/For_Individual_Genes/",
+  remove_command = paste("rm ~/TWAS_testing/data/For_Individual_Genes2/",
                          gene_name,".*",sep="")
   system(remove_command)
   
@@ -46,9 +46,6 @@ get_snp <- function(gene_exp, gene_ind, chr, IGAP_summary, Index_Mat){
                           snp_bim_igap$Non_Effect_allele)
   snp_bim_igap$Beta[which(remove_flip$flip)] = 
     -snp_bim_igap$Beta[which(remove_flip$flip)]
-  snp_bim_igap$JansenCor[which(remove_flip$flip)] = 
-    -snp_bim_igap$JansenCor[which(remove_flip$flip)]
-  
   snp_bim_igap = snp_bim_igap[remove_flip$keep,]
   
   snp_bed_ind = NULL
@@ -107,18 +104,16 @@ reg_out_cov <- function(gene_exp, gene_ind, cov5table, SNP, snp_bim){
   return(list(X1 = X1, SNP_BED = SNP, snp_bim_igap = snp_bim))
 }
 
-remove_na_effects <- function(X1, SNP, IGAP_cor, Jansen_cor){
+remove_na_effects <- function(X1, SNP, IGAP_cor){
   lm_stage1_X1 = lm(X1 ~ SNP)
   hatbetaX1 = lm_stage1_X1$coefficients[-1]
   
   na_ind = which(!is.na(hatbetaX1))
   SNP = SNP[,na_ind]
   IGAP_cor = IGAP_cor[na_ind,]
-  Jansen_cor = Jansen_cor[na_ind,]
   
   return(list(SNP_BED = SNP,
-              IGAP_r = IGAP_cor,
-              Jansen_r = Jansen_cor))
+              IGAP_r = IGAP_cor))
 }
 
 fit_stage1 <- function(X1, SNP){

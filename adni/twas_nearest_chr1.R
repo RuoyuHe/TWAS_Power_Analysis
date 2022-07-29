@@ -1,6 +1,7 @@
 setwd("~/TWAS_testing/Rcode/power/")
 library(plink2R)
 library(data.table)
+source("./allele_qc.R")
 source("./stage2.R")
 source("./stage1.R")
 
